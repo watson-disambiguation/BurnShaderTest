@@ -4,11 +4,12 @@ Shader "Unlit/BurnUp"
     {
         _Colour ("Colour", Color) = (1,1,1,1)
         _FireColour ("Fire Colour", Color) = (1,0.4,0,3)
-
         _NoiseTex ("Noise Texture", 2D) = "white" {}
         _NoiseScale ("Noise Scale", Float) = 0.01
+        _BurnSpeed ("Burn Speed", Float) = 0.01
         _Threshold ("Threshold", Range(0,1)) = 0.5
-        _BurnEdge ("Burn Edge Width", Range(0,0.1)) = 0.1
+        _BurnEdge ("Burn Edge Width Outer", Range(0,0.1)) = 0.1
+        _BurnEdgeInner ("Burn Edge Width Inner", Range(0,0.1)) = 0.1
     }
     SubShader
     {
@@ -47,6 +48,8 @@ Shader "Unlit/BurnUp"
             float4 _Colour;
             float4 _FireColour;
             float _BurnEdge;
+            float _BurnEdgeInner;
+            float _BurnSpeed;
 
             float inverseLerp (float from, float to, float value)
             {
@@ -63,16 +66,24 @@ Shader "Unlit/BurnUp"
             
             float4 frag (v2f i) : SV_Target
             {
+                //Scale distance to edge
                 float sqrtHalf = 0.7071;
                 float2 centeredUV = i.uv - 0.5;
+
+                float noise = tex2D(_NoiseTex,float2(i.uv.x,i.uv.y + (_Time.x * _BurnSpeed))).r;
                 float distance = length(centeredUV).rrr;
-                distance = distance - tex2D(_NoiseTex,i.uv) * _NoiseScale;
+                //Makind burn have noisy edge
+                distance = distance - noise * _NoiseScale;
+
+                
                 float threshold = lerp(-_NoiseScale,sqrtHalf,_Threshold);
                 float clipValue  = 1 - step(threshold, distance);
                 float burnEdgeInside  = step(threshold-_BurnEdge, distance);
-                float unBurnt = 1-burnEdgeInside;
+                float unBurnt = saturate((1-burnEdgeInside)*inverseLerp(threshold-_BurnEdge,threshold-_BurnEdge-_BurnEdgeInner,distance));
                 float burnEdge = min(clipValue,burnEdgeInside) * inverseLerp(threshold-_BurnEdge, threshold,distance);
+                
                 float3 colour = _Colour.rgb * unBurnt + burnEdge * _FireColour.rgb;
+                clipValue -= unBurnt;
                 return float4(colour,clipValue);;
             }
             ENDCG
